@@ -16,12 +16,12 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app); 
 
-// 💡 നിങ്ങളുടെ ശരിയായ Vercel ലിങ്കുകൾ ഇവിടെ ആഡ് ചെയ്തിട്ടുണ്ട്
+// 💡 നിങ്ങളുടെ പുതിയ Vercel ലിങ്കുകൾ ഇവിടെ അപ്ഡേറ്റ് ചെയ്തു
 const allowedOrigins = [
   "http://localhost:5173", 
   "http://127.0.0.1:5173",
-  "https://rentnest-wd1w.vercel.app",
-  "https://rentnest-wd1w-ahvo2gk1z-atharv2.vercel.app"
+  "https://rentnest-xi.vercel.app",
+  "https://rentnest-efshjnp3b-atharv2.vercel.app"
 ];
 
 // Socket.io സജ്ജീകരണം
