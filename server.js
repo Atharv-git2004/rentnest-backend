@@ -16,17 +16,24 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app); 
 
+// 💡 നിങ്ങളുടെ ഫ്രണ്ട്എൻഡ് ലിങ്കുകൾ ഇവിടെ നൽകുക
+const allowedOrigins = [
+  "http://localhost:5173", 
+  "http://127.0.0.1:5173",
+  "https://your-frontend-link.vercel.app" // 👈 ഇവിടെ നിങ്ങളുടെ യഥാർത്ഥ Vercel/Netlify ലിങ്ക് കൊടുക്കുക
+];
+
 // Socket.io സജ്ജീകരണം
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    origin: allowedOrigins,
     methods: ["GET", "POST"]
   }
 });
 
 // Middleware
 app.use(cors({
-  origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+  origin: allowedOrigins,
   credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -47,7 +54,6 @@ io.on('connection', (socket) => {
   console.log(`🔌 New connection attempt. UserID from client: ${userId}`);
 
   if (userId && userId !== "undefined" && userId !== "null") {
-    // യൂസർ ഐഡി വെച്ച് ഒരു റൂമിൽ ജോയിൻ ചെയ്യുന്നു
     socket.join(userId); 
     console.log(`✅ User joined room: ${userId}`);
   } else {
@@ -85,7 +91,6 @@ io.on('connection', (socket) => {
   // 2. VIDEO/AUDIO CALL LOGIC (WebRTC - Simple Peer)
   // ==========================================
 
-  // ഒരാൾ കോൾ വിളിക്കുമ്പോൾ (WebRTC സിഗ്നൽ മറ്റേയാൾക്ക് അയക്കാൻ)
   socket.on("call-user", (data) => {
     console.log(`📞 Call signal from ${data.from} to ${data.userToCall}`);
     io.to(data.userToCall).emit("incoming-call", { 
@@ -94,13 +99,11 @@ io.on('connection', (socket) => {
     });
   });
 
-  // മറ്റേയാൾ കോൾ അറ്റൻഡ് ചെയ്യുമ്പോൾ (സിഗ്നൽ തിരിച്ച് വിളിച്ചയാൾക്ക് അയക്കാൻ)
   socket.on("accept-call", (data) => {
     console.log(`✅ Call accepted by someone, sending signal back to ${data.to}`);
     io.to(data.to).emit("call-accepted", data.signal);
   });
 
-  // കോൾ കട്ട് ചെയ്യുമ്പോൾ
   socket.on("end-call", (data) => {
     console.log(`❌ Call ended for ${data.to}`);
     io.to(data.to).emit("call-ended");
