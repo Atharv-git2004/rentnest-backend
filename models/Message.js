@@ -17,14 +17,29 @@ const messageSchema = new mongoose.Schema({
   },
   text: {
     type: String,
-    required: true
+    default: '' // 💡 ശ്രദ്ധിക്കുക: 'required: true' മാറ്റി 'default' ആക്കി
   },
-  // 💡 പുതിയ ഫീൽഡ്: മെസ്സേജ് സ്റ്റാറ്റസ്
+  // മെസ്സേജ് സ്റ്റാറ്റസ്
   status: {
     type: String,
     enum: ['sent', 'delivered', 'read'],
     default: 'sent'
+  },
+
+  // 📞 NEW: കോൾ ലോഗുകൾ ട്രാക്ക് ചെയ്യാനുള്ള ഫീൽഡുകൾ
+  messageType: { 
+    type: String, 
+    enum: ['text', 'call'], 
+    default: 'text' 
+  },
+  callDetails: {
+    callType: { type: String, enum: ['audio', 'video'] },
+    status: { type: String, enum: ['missed', 'completed', 'rejected', 'busy'] },
+    startTime: { type: Date },
+    endTime: { type: Date },
+    duration: { type: Number } // ഇൻ സെക്കൻഡ്സ് (Seconds)
   }
+
 }, { timestamps: true });
 
 export default mongoose.model('Message', messageSchema);

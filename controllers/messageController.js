@@ -1,18 +1,33 @@
 import Message from '../models/Message.js';
 import User from '../models/User.js';
 
-// @desc    Send a new message
+// @desc    Send a new message or call log
 export const sendMessage = async (req, res) => {
   try {
-    const { receiverId, propertyId, text } = req.body;
+    // 💡 പുതിയ ഫീൽഡുകൾ (messageType, callDetails) കൂടി req.body ൽ നിന്ന് എടുക്കുന്നു
+    const { receiverId, propertyId, text, messageType, callDetails } = req.body;
     const senderId = req.user._id;
 
-    if (!receiverId || !text) {
-      return res.status(400).json({ success: false, message: 'Receiver ID and text are required.' });
+    if (!receiverId) {
+      return res.status(400).json({ success: false, message: 'Receiver ID is required.' });
     }
 
-    // status: 'sent' എന്ന് ഡിഫോൾട്ട് ആയി സേവ് ആകുന്നു
-    const newMessage = new Message({ senderId, receiverId, propertyId, text, status: 'sent' });
+    // സാധാരണ മെസ്സേജ് ആണെങ്കിൽ മാത്രം text നിർബന്ധമാക്കുന്നു
+    if ((!messageType || messageType === 'text') && !text) {
+      return res.status(400).json({ success: false, message: 'Text is required for text messages.' });
+    }
+
+    // 💡 പുതിയ മെസ്സേജ് ഡോക്യുമെന്റ് ഉണ്ടാക്കുന്നു
+    const newMessage = new Message({ 
+      senderId, 
+      receiverId, 
+      propertyId, 
+      text: text || '', // text ഇല്ലെങ്കിൽ empty string ആക്കും
+      status: 'sent',
+      messageType: messageType || 'text',
+      callDetails: messageType === 'call' ? callDetails : undefined
+    });
+    
     await newMessage.save();
 
     res.status(201).json({ success: true, data: newMessage });
@@ -100,11 +115,22 @@ export const getConversations = async (req, res) => {
 
     const data = users.map(u => {
       const lastMsg = lastMessagesMap.get(u._id.toString());
+      
+      // 💡 അവസാനത്തെ മെസ്സേജ് കോൾ ആണോ ടെക്സ്റ്റ് ആണോ എന്ന് ചെക്ക് ചെയ്യുന്നു
+      let displayMessage = '';
+      if (lastMsg) {
+        if (lastMsg.messageType === 'call') {
+          displayMessage = lastMsg.callDetails?.callType === 'video' ? '📹 Video Call' : '📞 Audio Call';
+        } else {
+          displayMessage = lastMsg.text;
+        }
+      }
+
       return {
         _id: u._id,
         name: u.name,
         role: u.role,
-        lastMessage: lastMsg ? lastMsg.text : '',
+        lastMessage: displayMessage,
         createdAt: lastMsg ? lastMsg.createdAt : null,
         status: lastMsg ? lastMsg.status : 'read' 
       };
