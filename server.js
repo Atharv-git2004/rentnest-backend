@@ -1,10 +1,14 @@
+// server.js
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import path from 'path';
+import { fileURLToPath } from 'url'; // 💡 ഫിക്സ് 1: ES Module-നായി ഇമ്പോർട്ട് ചെയ്തത്
 import { createServer } from 'http'; 
 import { Server } from 'socket.io'; 
+import fs from 'fs'; 
 
 import authRoutes from './routes/authRoutes.js';
 import propertyRoutes from './routes/propertyRoutes.js';
@@ -16,7 +20,6 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app); 
 
-// 💡 Vercel ലിങ്കുകളും ലോക്കൽഹോസ്റ്റും
 const allowedOrigins = [
   "http://localhost:5173", 
   "http://127.0.0.1:5173",
@@ -41,8 +44,23 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-const __dirname = path.resolve();
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// 💡 ഫിക്സ് 1: ES Module-ൽ __dirname കൃത്യമായി എടുക്കാനുള്ള ഒരേയൊരു സ്റ്റാൻഡേർഡ് വഴി
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadDir = path.join(__dirname, 'uploads');
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+// 💡 ഫിക്സ് 2: ഓഡിയോ/വീഡിയോ ബ്രൗസറിൽ പ്ലേ ആകാൻ ആവശ്യമായ Cross-Origin Headers സെറ്റ് ചെയ്യുന്നു!
+app.use('/uploads', express.static(uploadDir, {
+  setHeaders: (res, filePath) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.set('Accept-Ranges', 'bytes'); // ഓഡിയോ സീക്ക് ചെയ്യാൻ (Forward/Rewind) ഇത് നിർബന്ധമാണ്
+  }
+}));
 
 // Routes
 app.use('/api/users', authRoutes); 
@@ -50,31 +68,19 @@ app.use('/api/properties', propertyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes); 
 
-// ==========================================
 // SOCKET.IO CONNECTION
-// ==========================================
 io.on('connection', (socket) => {
   const userId = socket.handshake.query.userId;
   
   if (userId && userId !== "undefined" && userId !== "null") {
     socket.join(userId); 
     console.log(`✅ User connected & joined room: ${userId}`);
-  } else {
-    console.log("⚠️ Guest connection (No UserID provided)");
   }
 
-  // ------------------------------------------
-  // 1. CHAT LOGIC
-  // ------------------------------------------
   socket.on('send-message', (data) => {
     try {
-      // 💡 ID കൃത്യമായി എടുക്കാൻ optional chaining ഉപയോഗിക്കുന്നു
       const receiverId = data?.receiverId?._id ? data.receiverId._id.toString() : data?.receiverId?.toString();
-      const senderId = data?.senderId?._id ? data.senderId._id.toString() : data?.senderId?.toString();
-
       if (receiverId) {
-        console.log(`📩 Message from ${senderId} to ${receiverId}`);
-        // 💡 io.to ന് പകരം socket.to ഉപയോഗിച്ചാൽ അയച്ച ആൾക്ക് വീണ്ടും മെസ്സേജ് പോകില്ല (ഡ്യൂപ്ലിക്കേറ്റ് ഒഴിവാക്കാം)
         socket.to(receiverId).emit('receive-message', data);
       }
     } catch (error) {
@@ -94,37 +100,28 @@ io.on('connection', (socket) => {
     socket.to(receiverId).emit('stop-typing', { senderId });
   });
 
-  // ------------------------------------------
-  // 2. VIDEO/AUDIO CALL LOGIC (WebRTC)
-  // ------------------------------------------
   socket.on("call-user", (data) => {
-    console.log(`📞 ${data.callType} call signal from ${data.from} to ${data.userToCall}`);
     io.to(data.userToCall).emit("incoming-call", { 
       signal: data.signalData, 
       from: data.from,
-      callType: data.callType // 💡 പരിഹരിച്ചു: Call type കൂടി receiver-ന് കൈമാറുന്നു
+      callType: data.callType 
     });
   });
 
   socket.on("accept-call", (data) => {
-    console.log(`✅ Call accepted, sending signal back to ${data.to}`);
     io.to(data.to).emit("call-accepted", data.signal);
   });
 
   socket.on("end-call", (data) => {
-    console.log(`❌ Call ended for ${data.to}`);
     io.to(data.to).emit("call-ended");
   });
 
-  // ------------------------------------------
-  // DISCONNECT LOGIC
-  // ------------------------------------------
   socket.on('disconnect', () => {
-    console.log(`🔌 Socket disconnected: ${socket.id} (User: ${userId})`);
+    console.log(`🔌 Socket disconnected: ${userId}`);
   });
 });
 
-// --- MONGODB CONNECTION ---
+// MONGODB CONNECTION
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✓ MongoDB Connected Successfully"))
   .catch((err) => console.error("MongoDB Error:", err));
