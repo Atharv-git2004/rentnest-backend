@@ -4,16 +4,15 @@ import Message from '../models/Message.js';
 import User from '../models/User.js';
 
 // @desc    Upload file (Image/Audio)
-// 🆕 ഈ ഫംഗ്‌ഷൻ ആണ് മൾട്ടർ (Multer) വഴി വരുന്ന ഫയൽ കൈകാര്യം ചെയ്യുന്നത്
 export const uploadFile = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
 
-    // നിങ്ങൾ Cloudinary ഉപയോഗിക്കുന്നുണ്ടെങ്കിൽ ഇവിടുത്തെ ലോജിക് മാറ്റേണ്ടി വരും. 
-    // ഇപ്പോൾ ഫയൽ ലോക്കൽ ആയി '/uploads' ഫോൾഡറിലേക്കാണ് സേവ് ആകുന്നത്.
-    const fileUrl = `/uploads/${req.file.filename}`;
+    // 🚀 തിരുത്തിയ ഭാഗം: Cloudinary വഴി അപ്‌ലോഡ് ചെയ്യുമ്പോൾ കിട്ടുന്ന യഥാർത്ഥ URL (req.file.path) എടുക്കുന്നു.
+    // Cloudinary ഇല്ലെങ്കിൽ മാത്രം പഴയപോലെ '/uploads/...' ഫോൾഡറിലേക്ക് പോകും.
+    const fileUrl = req.file.path || `/uploads/${req.file.filename}`;
     
     res.status(200).json({ 
       success: true, 
@@ -21,6 +20,7 @@ export const uploadFile = async (req, res) => {
       fileUrl 
     });
   } catch (error) {
+    console.error("Upload error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -56,7 +56,8 @@ export const sendMessage = async (req, res) => {
       callDetails: messageType === 'call' ? callDetails : undefined
     });
     
-    await defaultModel.save.call(newMessage); // Using default save
+    // 🚀 പ്രധാന തിരുത്ത്: 'defaultModel.save.call' ഒഴിവാക്കി ശരിയായ രീതിയിൽ മെസ്സേജ് ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
+    await newMessage.save(); 
 
     res.status(201).json({ success: true, data: newMessage });
   } catch (error) {

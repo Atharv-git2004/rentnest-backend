@@ -1,3 +1,5 @@
+// routes/messageRoutes.js
+
 import express from 'express';
 import { 
   sendMessage, 
@@ -12,21 +14,21 @@ import upload from '../middleware/uploadMiddleware.js';
 const router = express.Router();
 
 /**
- * 💡 ORDER MATTERS IN EXPRESS!
- * Always put static paths (like /upload or /conversations) 
- * BEFORE dynamic paths (like /:otherUserId).
+ * 💡 ഓർഡർ വളരെ പ്രധാനമാണ്!
+ * എപ്പോഴും static paths (/upload, /conversations) ആദ്യം കൊടുക്കുക.
+ * അതിനു ശേഷം മാത്രം dynamic paths (/:otherUserId) കൊടുക്കുക.
  */
 
-// 1. Upload Route
+// 1. ഫയലുകൾ / ഓഡിയോ അപ്‌ലോഡ് ചെയ്യാനുള്ള റൂട്ട് (Multer ഉപയോഗിച്ച്)
 router.post('/upload', protect, upload.single('file'), uploadFile);
 
-// 2. Conversations List
+// 2. യൂസറുടെ ചാറ്റ് ലിസ്റ്റ് എടുക്കാനുള്ള റൂട്ട്
 router.get('/conversations', protect, getConversations); 
 
-// 3. Send Message
+// 3. പുതിയ മെസ്സേജ് അയക്കാനുള്ള റൂട്ട്
 router.post('/', protect, sendMessage);
 
-// 4. Dynamic/Parameter Routes (Must come LAST)
+// 4. ഡൈനാമിക് റൂട്ടുകൾ (ഒരു പ്രത്യേക യൂസറുമായുള്ള ചാറ്റുകൾ എടുക്കാൻ)
 router.get('/:otherUserId', protect, getMessages); 
 router.put('/:otherUserId/read', protect, markMessagesAsRead); 
 
