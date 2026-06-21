@@ -5,7 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import path from 'path';
-import { fileURLToPath } from 'url'; // 💡 ഫിക്സ് 1: ES Module-നായി ഇമ്പോർട്ട് ചെയ്തത്
+import { fileURLToPath } from 'url'; // 💡 Fix 1: Imported for ES Module compatibility
 import { createServer } from 'http'; 
 import { Server } from 'socket.io'; 
 import fs from 'fs'; 
@@ -27,7 +27,7 @@ const allowedOrigins = [
   "https://rentnest-efshjnp3b-atharv2.vercel.app"
 ];
 
-// Socket.io സജ്ജീകരണം
+// Socket.io Setup
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
@@ -44,7 +44,7 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// 💡 ഫിക്സ് 1: ES Module-ൽ __dirname കൃത്യമായി എടുക്കാനുള്ള ഒരേയൊരു സ്റ്റാൻഡേർഡ് വഴി
+// 💡 Fix 1: The standard way to get __dirname in an ES Module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadDir = path.join(__dirname, 'uploads');
@@ -53,12 +53,12 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
-// 💡 ഫിക്സ് 2: ഓഡിയോ/വീഡിയോ ബ്രൗസറിൽ പ്ലേ ആകാൻ ആവശ്യമായ Cross-Origin Headers സെറ്റ് ചെയ്യുന്നു!
+// 💡 Fix 2: Setting Cross-Origin Headers so audio/video can play properly in the browser!
 app.use('/uploads', express.static(uploadDir, {
   setHeaders: (res, filePath) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.set('Accept-Ranges', 'bytes'); // ഓഡിയോ സീക്ക് ചെയ്യാൻ (Forward/Rewind) ഇത് നിർബന്ധമാണ്
+    res.set('Accept-Ranges', 'bytes'); // Mandatory for audio seeking (Forward/Rewind)
   }
 }));
 

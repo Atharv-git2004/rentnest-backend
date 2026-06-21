@@ -3,7 +3,7 @@
 import Message from '../models/Message.js';
 import User from '../models/User.js';
 
-// @desc    Upload file (Image/Audio)
+// @desc    Upload file (Image/Audio/PDF)
 export const uploadFile = async (req, res) => {
   try {
     if (!req.file) {
@@ -28,7 +28,7 @@ export const uploadFile = async (req, res) => {
 // @desc    Send a new message or call log
 export const sendMessage = async (req, res) => {
   try {
-    const { receiverId, propertyId, text, messageType, callDetails, fileUrl } = req.body;
+    const { receiverId, propertyId, text, messageType, callDetails, fileUrl, audioDuration } = req.body;
     
     const senderId = req.user?._id || req.user?.id;
 
@@ -51,6 +51,7 @@ export const sendMessage = async (req, res) => {
       propertyId, 
       text: text || '',
       fileUrl: fileUrl || '', // ഫയൽ ലിങ്ക് ഉണ്ടെങ്കിൽ സേവ് ചെയ്യുന്നു
+      audioDuration: messageType === 'audio' ? audioDuration : undefined, // സ്പീക്കർ ഡ്യൂറേഷൻ സേവ് ചെയ്യുന്നു
       status: 'sent',
       messageType: messageType || 'text',
       callDetails: messageType === 'call' ? callDetails : undefined
@@ -145,8 +146,12 @@ export const getConversations = async (req, res) => {
           displayMessage = lastMsg.callDetails?.callType === 'video' ? '📹 Video Call' : '📞 Audio Call';
         } else if (lastMsg.messageType === 'image') {
           displayMessage = '📷 Image';
+        } else if (lastMsg.messageType === 'video') {
+          displayMessage = '🎥 Video';
         } else if (lastMsg.messageType === 'audio') {
-          displayMessage = '🎙️ Audio Message';
+          displayMessage = '🎙️ Voice Message';
+        } else if (lastMsg.messageType === 'pdf' || lastMsg.messageType === 'file') {
+          displayMessage = '📄 Document';
         } else {
           displayMessage = lastMsg.text;
         }
