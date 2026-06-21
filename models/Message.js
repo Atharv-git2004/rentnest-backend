@@ -4,12 +4,14 @@ const messageSchema = new mongoose.Schema({
   senderId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    index: true // 💡 ഒപ്റ്റിമൈസേഷൻ: ചാറ്റ് ഹിസ്റ്ററി വേഗത്തിൽ തിരയാൻ സഹായിക്കുന്നു
   },
   receiverId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    index: true // 💡 ഒപ്റ്റിമൈസേഷൻ: ചാറ്റ് ഹിസ്റ്ററി വേഗത്തിൽ തിരയാൻ സഹായിക്കുന്നു
   },
   propertyId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -17,19 +19,25 @@ const messageSchema = new mongoose.Schema({
   },
   text: {
     type: String,
-    default: '' // 💡 ശ്രദ്ധിക്കുക: 'required: true' മാറ്റി 'default' ആക്കി
+    default: '' 
   },
-  // മെസ്സേജ് സ്റ്റാറ്റസ്
+  
+  // 🆕 ഇമേജ്, ഓഡിയോ ഫയലുകൾ സേവ് ചെയ്യാൻ പുതിയ ഫീൽഡ്
+  fileUrl: {
+    type: String, // ക്ലൗഡിനറി ലിങ്ക് അല്ലെങ്കിൽ ലോക്കൽ പാത്ത് സേവ് ചെയ്യാൻ
+    default: ''
+  },
+  
   status: {
     type: String,
     enum: ['sent', 'delivered', 'read'],
     default: 'sent'
   },
 
-  // 📞 NEW: കോൾ ലോഗുകൾ ട്രാക്ക് ചെയ്യാനുള്ള ഫീൽഡുകൾ
+  // 📞 കോൾ ലോഗുകൾക്കും ഫയലുകൾക്കും വേണ്ടിയുള്ള ട്രാക്കിംഗ്
   messageType: { 
     type: String, 
-    enum: ['text', 'call'], 
+    enum: ['text', 'call', 'image', 'audio', 'file'], // 'image', 'audio', 'file' എന്നിവ കൂടി ചേർത്തു
     default: 'text' 
   },
   callDetails: {
@@ -41,5 +49,8 @@ const messageSchema = new mongoose.Schema({
   }
 
 }, { timestamps: true });
+
+// 💡 രണ്ട് ഉപയോക്താക്കൾ തമ്മിലുള്ള മെസ്സേജുകൾ വളരെ വേഗത്തിൽ ഫെച്ച് ചെയ്യാൻ Compound Index ചേർക്കുന്നു
+messageSchema.index({ senderId: 1, receiverId: 1 });
 
 export default mongoose.model('Message', messageSchema);

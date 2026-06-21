@@ -16,7 +16,7 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app); 
 
-// 💡 നിങ്ങളുടെ പുതിയ Vercel ലിങ്കുകൾ ഇവിടെ അപ്ഡേറ്റ് ചെയ്തു
+// 💡 Vercel ലിങ്കുകളും ലോക്കൽഹോസ്റ്റും
 const allowedOrigins = [
   "http://localhost:5173", 
   "http://127.0.0.1:5173",
@@ -28,7 +28,8 @@ const allowedOrigins = [
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
@@ -49,59 +50,64 @@ app.use('/api/properties', propertyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes); 
 
-// --- ഒരൊറ്റ SOCKET.IO CONNECTION ---
+// ==========================================
+// SOCKET.IO CONNECTION
+// ==========================================
 io.on('connection', (socket) => {
   const userId = socket.handshake.query.userId;
-  console.log(`🔌 New connection attempt. UserID from client: ${userId}`);
-
+  
   if (userId && userId !== "undefined" && userId !== "null") {
     socket.join(userId); 
-    console.log(`✅ User joined room: ${userId}`);
+    console.log(`✅ User connected & joined room: ${userId}`);
   } else {
     console.log("⚠️ Guest connection (No UserID provided)");
   }
 
-  // ==========================================
-  // 1. CHAT LOGIC (മെസ്സേജുകൾക്കായി)
-  // ==========================================
-  
+  // ------------------------------------------
+  // 1. CHAT LOGIC
+  // ------------------------------------------
   socket.on('send-message', (data) => {
-    const receiverId = (data.receiverId?._id || data.receiverId || '').toString();
-    const senderId = (data.senderId?._id || data.senderId || '').toString();
-    const text = data.text;
+    try {
+      // 💡 ID കൃത്യമായി എടുക്കാൻ optional chaining ഉപയോഗിക്കുന്നു
+      const receiverId = data?.receiverId?._id ? data.receiverId._id.toString() : data?.receiverId?.toString();
+      const senderId = data?.senderId?._id ? data.senderId._id.toString() : data?.senderId?.toString();
 
-    console.log(`📩 Message from ${senderId} to ${receiverId}: ${text}`);
-
-    io.to(receiverId).emit('receive-message', data);
-    io.to(senderId).emit('receive-message', data);
+      if (receiverId) {
+        console.log(`📩 Message from ${senderId} to ${receiverId}`);
+        // 💡 io.to ന് പകരം socket.to ഉപയോഗിച്ചാൽ അയച്ച ആൾക്ക് വീണ്ടും മെസ്സേജ് പോകില്ല (ഡ്യൂപ്ലിക്കേറ്റ് ഒഴിവാക്കാം)
+        socket.to(receiverId).emit('receive-message', data);
+      }
+    } catch (error) {
+      console.error("❌ Socket Send Message Error:", error);
+    }
   });
 
   socket.on('mark-messages-read', ({ senderId, receiverId }) => {
-    io.to(senderId).emit('messages-read', { readerId: receiverId });
+    socket.to(senderId).emit('messages-read', { readerId: receiverId });
   });
 
   socket.on('typing', ({ senderId, receiverId }) => {
-    io.to(receiverId).emit('typing', { senderId });
+    socket.to(receiverId).emit('typing', { senderId });
   });
 
   socket.on('stop-typing', ({ senderId, receiverId }) => {
-    io.to(receiverId).emit('stop-typing', { senderId });
+    socket.to(receiverId).emit('stop-typing', { senderId });
   });
 
-  // ==========================================
-  // 2. VIDEO/AUDIO CALL LOGIC (WebRTC - Simple Peer)
-  // ==========================================
-
+  // ------------------------------------------
+  // 2. VIDEO/AUDIO CALL LOGIC (WebRTC)
+  // ------------------------------------------
   socket.on("call-user", (data) => {
-    console.log(`📞 Call signal from ${data.from} to ${data.userToCall}`);
+    console.log(`📞 ${data.callType} call signal from ${data.from} to ${data.userToCall}`);
     io.to(data.userToCall).emit("incoming-call", { 
       signal: data.signalData, 
-      from: data.from 
+      from: data.from,
+      callType: data.callType // 💡 പരിഹരിച്ചു: Call type കൂടി receiver-ന് കൈമാറുന്നു
     });
   });
 
   socket.on("accept-call", (data) => {
-    console.log(`✅ Call accepted by someone, sending signal back to ${data.to}`);
+    console.log(`✅ Call accepted, sending signal back to ${data.to}`);
     io.to(data.to).emit("call-accepted", data.signal);
   });
 
@@ -110,11 +116,11 @@ io.on('connection', (socket) => {
     io.to(data.to).emit("call-ended");
   });
 
-  // ==========================================
+  // ------------------------------------------
   // DISCONNECT LOGIC
-  // ==========================================
+  // ------------------------------------------
   socket.on('disconnect', () => {
-    console.log(`🔌 Socket disconnected: ${socket.id}`);
+    console.log(`🔌 Socket disconnected: ${socket.id} (User: ${userId})`);
   });
 });
 

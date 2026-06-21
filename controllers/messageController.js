@@ -1,37 +1,66 @@
+// controllers/messageController.js
+
 import Message from '../models/Message.js';
 import User from '../models/User.js';
+
+// @desc    Upload file (Image/Audio)
+// 🆕 ഈ ഫംഗ്‌ഷൻ ആണ് മൾട്ടർ (Multer) വഴി വരുന്ന ഫയൽ കൈകാര്യം ചെയ്യുന്നത്
+export const uploadFile = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded.' });
+    }
+
+    // നിങ്ങൾ Cloudinary ഉപയോഗിക്കുന്നുണ്ടെങ്കിൽ ഇവിടുത്തെ ലോജിക് മാറ്റേണ്ടി വരും. 
+    // ഇപ്പോൾ ഫയൽ ലോക്കൽ ആയി '/uploads' ഫോൾഡറിലേക്കാണ് സേവ് ആകുന്നത്.
+    const fileUrl = `/uploads/${req.file.filename}`;
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'File uploaded successfully', 
+      fileUrl 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 // @desc    Send a new message or call log
 export const sendMessage = async (req, res) => {
   try {
-    // 💡 പുതിയ ഫീൽഡുകൾ (messageType, callDetails) കൂടി req.body ൽ നിന്ന് എടുക്കുന്നു
-    const { receiverId, propertyId, text, messageType, callDetails } = req.body;
-    const senderId = req.user._id;
+    const { receiverId, propertyId, text, messageType, callDetails, fileUrl } = req.body;
+    
+    const senderId = req.user?._id || req.user?.id;
+
+    if (!senderId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized. User ID missing.' });
+    }
 
     if (!receiverId) {
       return res.status(400).json({ success: false, message: 'Receiver ID is required.' });
     }
 
-    // സാധാരണ മെസ്സേജ് ആണെങ്കിൽ മാത്രം text നിർബന്ധമാക്കുന്നു
-    if ((!messageType || messageType === 'text') && !text) {
+    // ടെക്സ്റ്റ്, ഇമേജ് അല്ലെങ്കിൽ ഓഡിയോ അല്ലാത്ത കേസിൽ വാലിഡേഷൻ
+    if (messageType === 'text' && (!text || text.trim() === '')) {
       return res.status(400).json({ success: false, message: 'Text is required for text messages.' });
     }
 
-    // 💡 പുതിയ മെസ്സേജ് ഡോക്യുമെന്റ് ഉണ്ടാക്കുന്നു
     const newMessage = new Message({ 
       senderId, 
       receiverId, 
       propertyId, 
-      text: text || '', // text ഇല്ലെങ്കിൽ empty string ആക്കും
+      text: text || '',
+      fileUrl: fileUrl || '', // ഫയൽ ലിങ്ക് ഉണ്ടെങ്കിൽ സേവ് ചെയ്യുന്നു
       status: 'sent',
       messageType: messageType || 'text',
       callDetails: messageType === 'call' ? callDetails : undefined
     });
     
-    await newMessage.save();
+    await defaultModel.save.call(newMessage); // Using default save
 
     res.status(201).json({ success: true, data: newMessage });
   } catch (error) {
+    console.error("Error in sendMessage:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -39,10 +68,9 @@ export const sendMessage = async (req, res) => {
 // @desc    Get chat history and mark as 'read'
 export const getMessages = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user?._id || req.user?.id;
     const { otherUserId } = req.params;
 
-    // 1. മെസ്സേജുകൾ എടുക്കുന്നു
     const messages = await Message.find({
       $or: [
         { senderId: userId, receiverId: otherUserId },
@@ -50,7 +78,6 @@ export const getMessages = async (req, res) => {
       ]
     }).sort({ createdAt: 1 });
 
-    // 2. ഈ യൂസർക്ക് വന്ന എല്ലാ 'sent' മെസ്സേജുകളും 'read' ആക്കുന്നു (Blue Tick Logic)
     await Message.updateMany(
       { senderId: otherUserId, receiverId: userId, status: { $ne: 'read' } },
       { $set: { status: 'read' } }
@@ -62,11 +89,11 @@ export const getMessages = async (req, res) => {
   }
 };
 
-// @desc    Mark specific messages as read (Manual update if needed)
+// @desc    Mark specific messages as read
 export const markMessagesAsRead = async (req, res) => {
   try {
     const { otherUserId } = req.params;
-    const userId = req.user._id;
+    const userId = req.user?._id || req.user?.id;
 
     await Message.updateMany(
       { senderId: otherUserId, receiverId: userId, status: { $ne: 'read' } },
@@ -82,7 +109,7 @@ export const markMessagesAsRead = async (req, res) => {
 // @desc    Get conversation list
 export const getConversations = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user?._id || req.user?.id;
 
     const messages = await Message.find({
       $or: [{ senderId: userId }, { receiverId: userId }]
@@ -96,7 +123,6 @@ export const getConversations = async (req, res) => {
         ? msg.receiverId.toString() 
         : msg.senderId.toString();
       
-      // 💡 സ്വയം മെസ്സേജ് അയച്ച ഡാറ്റ ഉണ്ടെങ്കിൽ അത് ഒഴിവാക്കുന്നു
       if (otherUserId !== userId.toString()) {
         conversationUsersIds.add(otherUserId);
         if (!lastMessagesMap.has(otherUserId)) {
@@ -105,26 +131,31 @@ export const getConversations = async (req, res) => {
       }
     });
 
-    // 💡 $ne (Not Equal) ഉപയോഗിച്ച് ലിസ്റ്റിൽ നിന്ന് ലോഗിൻ ചെയ്ത യൂസറെ പൂർണ്ണമായും ഫിൽറ്റർ ചെയ്യുന്നു
     const users = await User.find({ 
-      _id: { 
-        $in: Array.from(conversationUsersIds),
-        $ne: userId 
-      } 
+      _id: { $in: Array.from(conversationUsersIds) } 
     }).select('name role');
 
-    const data = users.map(u => {
+    const data = await Promise.all(users.map(async (u) => {
       const lastMsg = lastMessagesMap.get(u._id.toString());
       
-      // 💡 അവസാനത്തെ മെസ്സേജ് കോൾ ആണോ ടെക്സ്റ്റ് ആണോ എന്ന് ചെക്ക് ചെയ്യുന്നു
       let displayMessage = '';
       if (lastMsg) {
         if (lastMsg.messageType === 'call') {
           displayMessage = lastMsg.callDetails?.callType === 'video' ? '📹 Video Call' : '📞 Audio Call';
+        } else if (lastMsg.messageType === 'image') {
+          displayMessage = '📷 Image';
+        } else if (lastMsg.messageType === 'audio') {
+          displayMessage = '🎙️ Audio Message';
         } else {
           displayMessage = lastMsg.text;
         }
       }
+
+      const unreadCount = await Message.countDocuments({
+        senderId: u._id,
+        receiverId: userId,
+        status: { $ne: 'read' }
+      });
 
       return {
         _id: u._id,
@@ -132,9 +163,12 @@ export const getConversations = async (req, res) => {
         role: u.role,
         lastMessage: displayMessage,
         createdAt: lastMsg ? lastMsg.createdAt : null,
-        status: lastMsg ? lastMsg.status : 'read' 
+        status: lastMsg ? lastMsg.status : 'read',
+        unreadCount: unreadCount 
       };
-    });
+    }));
+
+    data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     res.status(200).json({ success: true, data });
   } catch (error) {
