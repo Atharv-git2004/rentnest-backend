@@ -22,7 +22,7 @@ const messageSchema = new mongoose.Schema({
     default: '' 
   },
   
-  // 🆕 ഇമേജ്, ഓഡിയോ ഫയലുകൾ സേവ് ചെയ്യാൻ പുതിയ ഫീൽഡ്
+  // ഇമേജ്, ഓഡിയോ ഫയലുകൾ സേവ് ചെയ്യാൻ
   fileUrl: {
     type: String, // ക്ലൗഡിനറി ലിങ്ക് അല്ലെങ്കിൽ ലോക്കൽ പാത്ത് സേവ് ചെയ്യാൻ
     default: ''
@@ -34,12 +34,25 @@ const messageSchema = new mongoose.Schema({
     default: 'sent'
   },
 
-  // 📞 കോൾ ലോഗുകൾക്കും ഫയലുകൾക്കും വേണ്ടിയുള്ള ട്രാക്കിംഗ്
   messageType: { 
     type: String, 
-    enum: ['text', 'call', 'image', 'audio', 'file'], // 'image', 'audio', 'file' എന്നിവ കൂടി ചേർത്തു
+    enum: ['text', 'call', 'image', 'audio', 'file'], 
     default: 'text' 
   },
+
+  // 🆕 മെസ്സേജ് എഡിറ്റ് ചെയ്തിട്ടുണ്ടോ എന്ന് ട്രാക്ക് ചെയ്യാൻ
+  isEdited: {
+    type: Boolean,
+    default: false
+  },
+
+  // 🆕 മെസ്സേജ് ഡിലീറ്റ് ചെയ്തിട്ടുണ്ടോ എന്ന് ട്രാക്ക് ചെയ്യാൻ (Soft Delete)
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+
+  // 📞 കോൾ ലോഗുകൾക്കും ഫയലുകൾക്കും വേണ്ടിയുള്ള ട്രാക്കിംഗ്
   callDetails: {
     callType: { type: String, enum: ['audio', 'video'] },
     status: { type: String, enum: ['missed', 'completed', 'rejected', 'busy'] },

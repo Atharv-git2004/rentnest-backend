@@ -1,5 +1,3 @@
-// server.js
-
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -14,6 +12,7 @@ import authRoutes from './routes/authRoutes.js';
 import propertyRoutes from './routes/propertyRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import messageRoutes from './routes/messageRoutes.js'; 
+import User from './models/User.js'; // 🚀 PRO FIX: വിളിക്കുന്ന ആളുടെ പേര് കണ്ടുപിടിക്കാൻ User മോഡൽ ഇമ്പോർട്ട് ചെയ്തു
 
 dotenv.config();
 
@@ -27,16 +26,20 @@ const allowedOrigins = [
   "https://rentnest-efshjnp3b-atharv2.vercel.app"
 ];
 
-// Socket.io Setup
+// Socket.io Setup with optimized WebRTC timeouts
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  pingTimeout: 60000, // 💡 WebRTC SDP സിഗ്നൽ ജനറേറ്റ് ചെയ്യുമ്പോൾ കണക്ഷൻ ഡ്രോപ്പ് ആവാതിരിക്കാൻ
+  pingInterval: 25000
 });
 
-// Middleware
+// 🚀 PRO FIX: messageController-ൽ req.app.get('io') വർക്ക് ചെയ്യാൻ വേണ്ടി സോക്കറ്റ് ഇൻസ്റ്റൻസ് ഇവിടെ സെറ്റ് ചെയ്യുന്നു
+app.set('io', io);
+
 app.use(cors({
   origin: allowedOrigins,
   credentials: true
@@ -66,62 +69,114 @@ app.use('/api/properties', propertyRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes); 
 
-// SOCKET.IO CONNECTION
+// 🚀 PRO HELPER: Mongoose ObjectId ഒബ്‌ജക്റ്റുകളെ പക്കാ സ്ട്രിംഗ് ആക്കി മാറ്റാൻ
+const cleanId = (id) => {
+  if (!id) return null;
+  return typeof id === 'object' ? (id._id?.toString() || id.id?.toString()) : id.toString().trim();
+};
+
+const activeUsers = new Map(); // userId -> socket.id
+
+// ==========================================
+// ⚡ SOCKET.IO REAL-TIME COMMUNICATION HUB
+// ==========================================
 io.on('connection', (socket) => {
-  const userId = socket.handshake.query.userId;
+  const rawUserId = socket.handshake.query.userId;
+  const userId = cleanId(rawUserId);
   
   if (userId && userId !== "undefined" && userId !== "null") {
+    // Ghost Socket Disconnection
+    const existingSocketId = activeUsers.get(userId);
+    if (existingSocketId && existingSocketId !== socket.id) {
+      const existingSocket = io.sockets.sockets.get(existingSocketId);
+      if (existingSocket) {
+        existingSocket.disconnect(true);
+      }
+    }
+
+    activeUsers.set(userId, socket.id);
     socket.join(userId); 
-    console.log(`✅ User connected & joined room: ${userId}`);
+    console.log(`⚡ [Socket Hub] User Active: ${userId} (Socket: ${socket.id})`);
   }
 
   socket.on('send-message', (data) => {
     try {
-      const receiverId = data?.receiverId?._id ? data.receiverId._id.toString() : data?.receiverId?.toString();
+      const receiverId = cleanId(data?.receiverId);
       if (receiverId) {
         socket.to(receiverId).emit('receive-message', data);
       }
     } catch (error) {
-      console.error("❌ Socket Send Message Error:", error);
+      console.error("Socket Send Message Error:", error);
     }
   });
 
   socket.on('mark-messages-read', ({ senderId, receiverId }) => {
-    socket.to(senderId).emit('messages-read', { readerId: receiverId });
+    socket.to(cleanId(senderId)).emit('messages-read', { readerId: cleanId(receiverId) });
   });
 
   socket.on('typing', ({ senderId, receiverId }) => {
-    socket.to(receiverId).emit('typing', { senderId });
+    socket.to(cleanId(receiverId)).emit('typing', { senderId: cleanId(senderId) });
   });
 
   socket.on('stop-typing', ({ senderId, receiverId }) => {
-    socket.to(receiverId).emit('stop-typing', { senderId });
+    socket.to(cleanId(receiverId)).emit('stop-typing', { senderId: cleanId(senderId) });
   });
 
-  // 💡 FIX 1: Frontend പ്രതീക്ഷിക്കുന്ന പോലെ signalData എന്ന് തന്നെ നൽകി
-  socket.on("call-user", (data) => {
-    console.log(`📞 Call initiated from ${data.from} to ${data.userToCall}`);
-    io.to(data.userToCall).emit("incoming-call", { 
-      signalData: data.signalData, // 💡 ഇവിടെ 'signal' എന്നതിന് പകരം 'signalData' ആക്കി മാറ്റി
-      from: data.from,
-      callerName: data.name || data.callerName || "Unknown User", // 💡 Caller Name പാസ്സ് ചെയ്തു
-      callType: data.callType 
+  // ==========================================
+  // 📞 WEBRTC SECURE P2P SIGNALING
+  // ==========================================
+
+  // 1. കോൾ വിളിക്കുമ്പോൾ (Call Initiated)
+  socket.on("call-user", async (data) => {
+    const targetUser = cleanId(data?.userToCall);
+    const callerId = cleanId(data?.from);
+    if (!targetUser || !callerId) return;
+
+    console.log(`📞 [Signaling] Call requested: ${callerId} -> ${targetUser} (${data.callType})`);
+    
+    let resolvedCallerName = data.name || data.callerName;
+    if (!resolvedCallerName || resolvedCallerName === "Unknown User") {
+      try {
+        const userDoc = await User.findById(callerId).select('name');
+        if (userDoc) resolvedCallerName = userDoc.name;
+      } catch (err) {
+        console.error("Caller DB lookup error:", err.message);
+      }
+    }
+
+    io.to(targetUser).emit("incoming-call", { 
+      signal: data.signalData, 
+      signalData: data.signalData, 
+      from: callerId,
+      callerName: resolvedCallerName || "User", 
+      callType: data.callType || 'video'
     });
   });
 
-  // 💡 FIX 2: കോൾ അക്സെപ്റ്റ് ചെയ്യുമ്പോൾ
+  // 2. കോൾ എടുക്കുമ്പോൾ (Call Accepted)
   socket.on("accept-call", (data) => {
-    console.log(`✅ Call accepted, sending signal back to ${data.to}`);
-    io.to(data.to).emit("call-accepted", data.signal);
+    const callerToAnswer = cleanId(data?.to);
+    if (!callerToAnswer) return;
+
+    console.log(`✅ [Signaling] Call accepted, sending SDP Answer to: ${callerToAnswer}`);
+    
+    io.to(callerToAnswer).emit("call-accepted", { signal: data.signal });
   });
 
+  // 3. കോൾ കട്ടാക്കുമ്പോൾ (Call Hangup)
   socket.on("end-call", (data) => {
-    console.log(`🚫 Call ended for ${data.to}`);
-    io.to(data.to).emit("call-ended");
+    const target = cleanId(data?.to);
+    if (!target) return;
+
+    console.log(`🚫 [Signaling] Hangup signal sent to: ${target}`);
+    io.to(target).emit("call-ended");
   });
 
   socket.on('disconnect', () => {
-    console.log(`🔌 Socket disconnected: ${userId}`);
+    if (userId && activeUsers.get(userId) === socket.id) {
+      activeUsers.delete(userId);
+      console.log(`🔌 [Socket Hub] User Disconnected: ${userId}`);
+    }
   });
 });
 
