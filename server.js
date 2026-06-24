@@ -44,7 +44,7 @@ app.use(cors({
   credentials: true
 }));
 
-// 🚀 PRO FIX 1: ബ്രൗസർ ചിലപ്പോൾ ഹെഡർ തെറ്റിച്ച് 'text/plain' ആയി ഡാറ്റ അയച്ചാലും അതിനെ പക്കാ JSON ആയി റീഡ് ചെയ്യാൻ!
+// Robust JSON Body parser
 app.use(express.json({ limit: '50mb', type: ['application/json', 'text/plain'] }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -57,7 +57,7 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 app.use('/uploads', express.static(uploadDir, {
-  setHeaders: (res, filePath) => {
+  setHeaders: (res) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     res.set('Accept-Ranges', 'bytes'); 
@@ -65,29 +65,31 @@ app.use('/uploads', express.static(uploadDir, {
 }));
 
 // =========================================================================
-// 🐞 PRO API DEBUGGER: ഫ്രണ്ട് എൻഡ് അയക്കുന്ന ബോഡി ഡാറ്റ ബാക്കെൻഡ് ലോഗിൽ കാണാൻ
+// 🐞 PRO API DEBUGGER: ലോഗുകൾ കാണാൻ
 // =========================================================================
 app.use((req, res, next) => {
-  if (req.method === 'POST' || req.method === 'PUT') {
+  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
     console.log(`\n--------------------------------------------------`);
     console.log(`📥 [API REQUEST] ${req.method} ${req.originalUrl}`);
     console.log(`🏷️  Headers Content-Type:`, req.headers['content-type']);
-    console.log(`📦 Received Body Data:`, JSON.stringify(req.body, null, 2));
+    if (Object.keys(req.body).length > 0) {
+      console.log(`📦 Received Body Data:`, JSON.stringify(req.body, null, 2));
+    }
     console.log(`--------------------------------------------------\n`);
   }
   next();
 });
 
-// 🚀 PRO FIX 2: JSON ഫോർമാറ്റ് പൊട്ടിയതാണ് 400 എററിന് കാരണമെങ്കിൽ അത് പിടിക്കാൻ
+// JSON Syntax error catcher
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-    console.error("❌ Broken JSON syntax received from frontend:", err.message);
+    console.error("❌ Broken JSON syntax received from client:", err.message);
     return res.status(400).json({ success: false, message: "Malformed JSON data sent from client." });
   }
   next();
 });
 
-// Routes
+// Routes Configuration
 app.use('/api/users', authRoutes); 
 app.use('/api/properties', propertyRoutes); 
 app.use('/api/admin', adminRoutes);
