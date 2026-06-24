@@ -6,19 +6,11 @@ import Property from '../models/Property.js';
 export const createProperty = async (req, res) => {
   try {
     const { 
-      title, 
-      location, 
-      price, 
-      type,
-      bedrooms,
-      bathrooms,
-      houseImage, 
-      description, 
-      rooms, 
-      amenities
+      title, location, price, type, bedrooms,
+      bathrooms, houseImage, description, rooms, amenities
     } = req.body;
 
-    // ഇൻപുട്ട് വാലിഡേഷൻ (അത്യാവശ്യ ഫീൽഡുകൾ ഉണ്ടെന്ന് ഉറപ്പാക്കുന്നു)
+    // ഇൻപുട്ട് വാലിഡേഷൻ
     if (!title || !location || !price) {
       return res.status(400).json({ success: false, message: 'Title, location, and price are required.' });
     }
@@ -69,9 +61,9 @@ export const getLiveProperties = async (req, res) => {
 };
 
 // @desc    Get listings owned by the logged-in user (Owner Dashboard)
-// @route   GET /api/properties/my-listings
+// @route   GET /api/properties/owner
 // @access  Private
-export const getMyProperties = async (req, res) => {
+export const getOwnerProperties = async (req, res) => {
   try {
     const properties = await Property.find({ owner: req.user._id })
       .sort({ createdAt: -1 });
@@ -92,7 +84,7 @@ export const getPropertyById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // MongoDB ID തെറ്റാണെങ്കിൽ ഉണ്ടാകുന്ന ക്രഷ് ഒഴിവാക്കാൻ ഒരു ചെറിയ ചെക്ക്
+    // MongoDB ID വാലിഡേഷൻ
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({ success: false, message: 'Invalid Property ID format.' });
     }
@@ -109,7 +101,6 @@ export const getPropertyById = async (req, res) => {
     const isOwner = req.user && ownerId && ownerId.toString() === req.user._id.toString();
     const isAdmin = req.user && (req.user.role === 'admin' || req.user.role?.toLowerCase() === 'admin');
 
-    // പ്രോപ്പർട്ടി അപ്രൂവ്ഡ് അല്ലെങ്കിലും, കാണാൻ ശ്രമിക്കുന്നത് ഓണറോ അഡ്മിനോ അല്ലെങ്കിലും നോട്ട് ഫൗണ്ട് നൽകുന്നു
     if (property.status !== 'approved' && !isOwner && !isAdmin) {
       return res.status(403).json({ 
         success: false, 

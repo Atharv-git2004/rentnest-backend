@@ -2,7 +2,7 @@ import express from 'express';
 import { 
     createProperty, 
     getLiveProperties, 
-    getMyProperties,
+    getOwnerProperties, // 💡 ഇത് getOwnerProperties എന്നാക്കി മാറ്റി
     getPropertyById, 
     getAdminPendingQueue, 
     verifyPropertyListing, 
@@ -16,8 +16,8 @@ const router = express.Router();
 router.get('/', getLiveProperties);
 
 // 🔒 Private Route: ലോഗിൻ ചെയ്ത ഓണർക്ക് സ്വന്തം ലിസ്റ്റിംഗുകൾ മാത്രം കാണാൻ
-// (💡 ശ്രദ്ധിക്കുക: ഈ റൂട്ട് /:id-ക്ക് മുകളിൽ തന്നെ കിടക്കണം)
-router.get('/my-listings', protect, getMyProperties);
+// 💡 തിരുത്തിയത്: ഫ്രണ്ട്‌എൻഡിൽ നിന്ന് വിളിക്കുന്ന അതേ പേര് ('/owner') തന്നെ ഇവിടെ നൽകി
+router.get('/owner', protect, getOwnerProperties);
 
 // 🔒 Private Route: പുതിയ പ്രോപ്പർട്ടി ലിസ്റ്റിംഗ് ആഡ് ചെയ്യാൻ
 router.post('/', protect, createProperty);
