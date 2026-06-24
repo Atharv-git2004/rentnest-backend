@@ -12,7 +12,7 @@ import authRoutes from './routes/authRoutes.js';
 import propertyRoutes from './routes/propertyRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import messageRoutes from './routes/messageRoutes.js'; 
-import User from './models/User.js'; // 🚀 PRO FIX: വിളിക്കുന്ന ആളുടെ പേര് കണ്ടുപിടിക്കാൻ User മോഡൽ ഇമ്പോർട്ട് ചെയ്തു
+import User from './models/User.js';
 
 dotenv.config();
 
@@ -33,18 +33,19 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
     credentials: true
   },
-  pingTimeout: 60000, // 💡 WebRTC SDP സിഗ്നൽ ജനറേറ്റ് ചെയ്യുമ്പോൾ കണക്ഷൻ ഡ്രോപ്പ് ആവാതിരിക്കാൻ
+  pingTimeout: 60000, 
   pingInterval: 25000
 });
 
-// 🚀 PRO FIX: messageController-ൽ req.app.get('io') വർക്ക് ചെയ്യാൻ വേണ്ടി സോക്കറ്റ് ഇൻസ്റ്റൻസ് ഇവിടെ സെറ്റ് ചെയ്യുന്നു
 app.set('io', io);
 
 app.use(cors({
   origin: allowedOrigins,
   credentials: true
 }));
-app.use(express.json({ limit: '50mb' }));
+
+// 🚀 PRO FIX 1: ബ്രൗസർ ചിലപ്പോൾ ഹെഡർ തെറ്റിച്ച് 'text/plain' ആയി ഡാറ്റ അയച്ചാലും അതിനെ പക്കാ JSON ആയി റീഡ് ചെയ്യാൻ!
+app.use(express.json({ limit: '50mb', type: ['application/json', 'text/plain'] }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 const __filename = fileURLToPath(import.meta.url);
@@ -63,13 +64,35 @@ app.use('/uploads', express.static(uploadDir, {
   }
 }));
 
+// =========================================================================
+// 🐞 PRO API DEBUGGER: ഫ്രണ്ട് എൻഡ് അയക്കുന്ന ബോഡി ഡാറ്റ ബാക്കെൻഡ് ലോഗിൽ കാണാൻ
+// =========================================================================
+app.use((req, res, next) => {
+  if (req.method === 'POST' || req.method === 'PUT') {
+    console.log(`\n--------------------------------------------------`);
+    console.log(`📥 [API REQUEST] ${req.method} ${req.originalUrl}`);
+    console.log(`🏷️  Headers Content-Type:`, req.headers['content-type']);
+    console.log(`📦 Received Body Data:`, JSON.stringify(req.body, null, 2));
+    console.log(`--------------------------------------------------\n`);
+  }
+  next();
+});
+
+// 🚀 PRO FIX 2: JSON ഫോർമാറ്റ് പൊട്ടിയതാണ് 400 എററിന് കാരണമെങ്കിൽ അത് പിടിക്കാൻ
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error("❌ Broken JSON syntax received from frontend:", err.message);
+    return res.status(400).json({ success: false, message: "Malformed JSON data sent from client." });
+  }
+  next();
+});
+
 // Routes
 app.use('/api/users', authRoutes); 
 app.use('/api/properties', propertyRoutes); 
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes); 
 
-// 🚀 PRO HELPER: Mongoose ObjectId ഒബ്‌ജക്റ്റുകളെ പക്കാ സ്ട്രിംഗ് ആക്കി മാറ്റാൻ
 const cleanId = (id) => {
   if (!id) return null;
   return typeof id === 'object' ? (id._id?.toString() || id.id?.toString()) : id.toString().trim();
@@ -85,7 +108,6 @@ io.on('connection', (socket) => {
   const userId = cleanId(rawUserId);
   
   if (userId && userId !== "undefined" && userId !== "null") {
-    // Ghost Socket Disconnection
     const existingSocketId = activeUsers.get(userId);
     if (existingSocketId && existingSocketId !== socket.id) {
       const existingSocket = io.sockets.sockets.get(existingSocketId);
@@ -122,11 +144,7 @@ io.on('connection', (socket) => {
     socket.to(cleanId(receiverId)).emit('stop-typing', { senderId: cleanId(senderId) });
   });
 
-  // ==========================================
   // 📞 WEBRTC SECURE P2P SIGNALING
-  // ==========================================
-
-  // 1. കോൾ വിളിക്കുമ്പോൾ (Call Initiated)
   socket.on("call-user", async (data) => {
     const targetUser = cleanId(data?.userToCall);
     const callerId = cleanId(data?.from);
@@ -153,17 +171,14 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 2. കോൾ എടുക്കുമ്പോൾ (Call Accepted)
   socket.on("accept-call", (data) => {
     const callerToAnswer = cleanId(data?.to);
     if (!callerToAnswer) return;
 
     console.log(`✅ [Signaling] Call accepted, sending SDP Answer to: ${callerToAnswer}`);
-    
     io.to(callerToAnswer).emit("call-accepted", { signal: data.signal });
   });
 
-  // 3. കോൾ കട്ടാക്കുമ്പോൾ (Call Hangup)
   socket.on("end-call", (data) => {
     const target = cleanId(data?.to);
     if (!target) return;
