@@ -8,14 +8,17 @@ import { createServer } from 'http';
 import { Server } from 'socket.io'; 
 import fs from 'fs'; 
 
+// 1. Routes Imports
 import authRoutes from './routes/authRoutes.js';
 import propertyRoutes from './routes/propertyRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import messageRoutes from './routes/messageRoutes.js'; 
+import complaintRoutes from './routes/complaintRoutes.js'; // 💡 പുതിയ റൂട്ട് ഇവിടെ ഇംപോർട്ട് ചെയ്തു
 import User from './models/User.js';
 
 dotenv.config();
 
+// 2. Initialize App and HTTP Server (ഇതിന് താഴെ മാത്രമേ app.use പാടുള്ളൂ)
 const app = express();
 const httpServer = createServer(app); 
 
@@ -39,6 +42,7 @@ const io = new Server(httpServer, {
 
 app.set('io', io);
 
+// 3. Middlewares
 app.use(cors({
   origin: allowedOrigins,
   credentials: true
@@ -89,11 +93,13 @@ app.use((err, req, res, next) => {
   next();
 });
 
-// Routes Configuration
+// 4. API Routes Configuration
 app.use('/api/users', authRoutes); 
 app.use('/api/properties', propertyRoutes); 
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes); 
+// 💡 complaintRoutes ഉപയോഗിക്കുന്നത് ഇവിടെയാണ് (app initialize ചെയ്തതിന് ശേഷം)
+app.use('/api/complaints', complaintRoutes); 
 
 const cleanId = (id) => {
   if (!id) return null;
@@ -197,7 +203,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// MONGODB CONNECTION
+// 5. MONGODB CONNECTION
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✓ MongoDB Connected Successfully"))
   .catch((err) => console.error("MongoDB Error:", err));
