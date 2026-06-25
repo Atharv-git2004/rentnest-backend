@@ -1,6 +1,6 @@
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
-import { OAuth2Client } from 'google-auth-library'; // 💡 Google Auth Library ഇംപോർട്ട് ചെയ്തു
+import { OAuth2Client } from 'google-auth-library'; 
 
 // Google OAuth Client ഇൻഷിയലൈസ് ചെയ്യുന്നു
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -38,6 +38,7 @@ export const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        avatar: user.avatar, // 💡 ഇവിടെയും അバター ഉൾപ്പെടുത്തി
         token: generateToken(user._id),
       });
     } else {
@@ -64,6 +65,7 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        avatar: user.avatar, // 💡 നോർമൽ ലോഗിൻ ചെയ്യുമ്പോഴും ഫ്രണ്ട്-എൻഡിലേക്ക് അവതാർ അയക്കുന്നു
         token: generateToken(user._id),
       });
     } else {
@@ -78,7 +80,6 @@ export const loginUser = async (req, res) => {
 // @desc    Auth Google user & get token
 // @route   POST /api/users/google
 // @access  Public
-// 💡 പുതിയതായി ചേർത്ത Google Login ഫങ്ഷൻ
 export const googleLogin = async (req, res) => {
   const { token } = req.body;
 
@@ -90,28 +91,34 @@ export const googleLogin = async (req, res) => {
     });
 
     const payload = ticket.getPayload();
-    const { email, name } = payload; // ഗൂഗിളിൽ നിന്നുള്ള യൂസർ വിവരങ്ങൾ എടുക്കുന്നു
+    const { email, name, picture } = payload; // 💡 ഗൂഗിളിൽ നിന്നുള്ള 'picture' കൂടി ഇവിടെ എടുക്കുന്നു
 
     // 2. ഈ ഇമെയിലുള്ള യൂസർ ഡാറ്റാബേസിൽ നിലവിലുണ്ടോ എന്ന് പരിശോധിക്കുന്നു
     let user = await User.findOne({ email });
 
     if (!user) {
-      // യൂസർ ഇല്ലെങ്കിൽ ഗൂഗിൾ വിവരങ്ങൾ വെച്ച് പുതിയൊരു അക്കൗണ്ട് ക്രിയേറ്റ് ചെയ്യുന്നു
+      // യൂസർ ഇല്ലെങ്കിൽ ഗൂഗിൾ വിവരങ്ങളും പ്രൊഫൈൽ ചിത്രവും വെച്ച് പുതിയൊരു അക്കൗണ്ട് ക്രിയേറ്റ് ചെയ്യുന്നു
       user = await User.create({
         name: name,
         email: email,
-        password: Math.random().toString(36).slice(-8), // സോഷ്യൽ ലോഗിൻ ആയതിനാൽ ഒരു റാണ്ടം പാസ്‌വേഡ് ജനറേറ്റ് ചെയ്യുന്നു
-        role: 'owner', // നിങ്ങളുടെ ഡിഫോൾട്ട് റോൾ
-        phone: ''
+        password: Math.random().toString(36).slice(-8), 
+        role: 'owner', 
+        phone: '',
+        avatar: picture || '' // 💡 പുതിയ യൂസറാണെങ്കിൽ ഗൂഗിൾ പിക്ചർ ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
       });
+    } else if (!user.avatar && picture) {
+      // നിലവിലുള്ള യൂസർ ആണെങ്കിലും ഡാറ്റാബേസിൽ ഫോട്ടോ ഇല്ലെങ്കിൽ പുതിയ ഫോട്ടോ അപ്ഡേറ്റ് ചെയ്യും
+      user.avatar = picture;
+      await user.save();
     }
 
-    // 3. നിങ്ങളുടെ ആപ്പിന്റെ ടോക്കൺ ഉൾപ്പെടെ വിവരങ്ങൾ തിരികെ അയക്കുന്നു
+    // 3. ഫ്രണ്ട്-എൻഡിലേക്ക് അവതാർ ഉൾപ്പെടെയുള്ള വിവരങ്ങൾ തിരികെ അയക്കുന്നു
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
+      avatar: user.avatar || picture, // 💡 ഫ്രണ്ട്-എൻഡിലേക്ക് പ്രൊഫൈൽ ലിങ്ക് അയക്കുന്നു
       token: generateToken(user._id),
     });
 
