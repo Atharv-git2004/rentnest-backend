@@ -1,4 +1,6 @@
 import Property from '../models/Property.js';
+import jwt from 'jsonwebtoken'; // 💡 പുതിയതായി ചേർത്തത് (ടോക്കൺ ഡീകോഡ് ചെയ്യാൻ)
+import User from '../models/User.js'; // 💡 പുതിയതായി ചേർത്തത് (യൂസറെ ഡാറ്റാബേസിൽ തിരയാൻ)
 
 // @desc    Create a new property request
 // @route   POST /api/properties
@@ -10,7 +12,6 @@ export const createProperty = async (req, res) => {
       bathrooms, houseImage, description, rooms, amenities
     } = req.body;
 
-    // ഇൻപുട്ട് വാലിഡേഷൻ
     if (!title || !location || !price) {
       return res.status(400).json({ success: false, message: 'Title, location, and price are required.' });
     }
@@ -79,12 +80,11 @@ export const getOwnerProperties = async (req, res) => {
 
 // @desc    Get single property by ID
 // @route   GET /api/properties/:id
-// @access  Public (approved) / Private (pending listings accessible by Owner/Admin)
+// @access  Public / Private
 export const getPropertyById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // MongoDB ID വാലിഡേഷൻ
     if (!id.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({ success: false, message: 'Invalid Property ID format.' });
     }
@@ -95,12 +95,25 @@ export const getPropertyById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Property not found.' });
     }
 
+    // 💡 സൂപ്പർ ഫിക്സ്: മിഡിൽവെയർ വഴി req.user വന്നില്ലെങ്കിൽ ഹെഡറിലെ ടോക്കൺ വെച്ച് ആളെ സ്വയം തിരിച്ചറിയുന്നു
+    let loggedInUser = req.user;
+
+    if (!loggedInUser && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      try {
+        const token = req.headers.authorization.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        loggedInUser = await User.findById(decoded.id).select('-password');
+      } catch (err) {
+        // ടോക്കൺ തെറ്റാണെങ്കിൽ അവരെ സാധാരണ പബ്ലിക് വിസിറ്റർ ആയി മാത്രം കണക്കാക്കും
+      }
+    }
+
     const ownerId = property.owner?._id || property.owner;
 
-    // യൂസർ ലോഗിൻ ചെയ്തിട്ടുണ്ടെങ്കിൽ മാത്രം ഓണർ/അഡ്മിൻ ചെക്കുകൾ നടത്തുന്നു
-    const isOwner = req.user && ownerId && ownerId.toString() === req.user._id.toString();
-    const isAdmin = req.user && (req.user.role === 'admin' || req.user.role?.toLowerCase() === 'admin');
+    const isOwner = loggedInUser && ownerId && ownerId.toString() === loggedInUser._id.toString();
+    const isAdmin = loggedInUser && (loggedInUser.role === 'admin' || loggedInUser.role?.toLowerCase() === 'admin');
 
+    // അപ്രൂവ്ഡ് അല്ലെങ്കിൽ Owner/Admin അല്ലാതെ മറ്റാർക്കും കൊടുക്കില്ല
     if (property.status !== 'approved' && !isOwner && !isAdmin) {
       return res.status(403).json({ 
         success: false, 
@@ -168,6 +181,43 @@ export const verifyPropertyListing = async (req, res) => {
   }
 };
 
+// @desc    Update/Edit Property (Owner Only)
+// @route   PUT /api/properties/:id
+// @access  Private
+export const updateProperty = async (req, res) => {
+  try {
+    let property = await Property.findById(req.params.id);
+
+    if (!property) {
+      return res.status(404).json({ success: false, message: 'Property not found.' });
+    }
+
+    if (!property.owner || property.owner.toString() !== req.user._id.toString()) {
+      return res.status(401).json({ success: false, message: 'Unauthorized access. Only the owner can edit this.' });
+    }
+
+    // 💡 സുരക്ഷാ ഫിക്സ്: ഫോമിൽ നിന്നും തെറ്റായി _id യോ owner ഐഡിയോ വന്നാൽ അത് ഒഴിവാക്കുന്നു
+    const { _id, owner, createdAt, ...updateData } = req.body;
+
+    property = await Property.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...updateData,
+        status: 'pending' // എഡിറ്റ് ചെയ്താൽ വീണ്ടും അഡ്മിൻ അപ്രൂവൽ വേണം
+      },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Property updated successfully. Wait for admin approval.',
+      data: property
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // @desc    Delete property
 // @route   DELETE /api/properties/:id
 // @access  Private
@@ -180,7 +230,7 @@ export const deleteProperty = async (req, res) => {
     }
 
     const userRole = req.user.role ? req.user.role.toLowerCase() : '';
-    const isOwner = property.owner.toString() === req.user._id.toString();
+    const isOwner = property.owner && property.owner.toString() === req.user._id.toString();
     const isAdmin = userRole === 'admin';
 
     if (!isOwner && !isAdmin) {
