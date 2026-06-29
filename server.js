@@ -29,7 +29,7 @@ const allowedOrigins = [
   "https://rentnest-efshjnp3b-atharv2.vercel.app"
 ];
 
-// Socket.io Setup with optimized WebRTC timeouts
+// Socket.io Setup
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
@@ -48,7 +48,6 @@ app.use(cors({
   credentials: true
 }));
 
-// Robust JSON Body parser
 app.use(express.json({ limit: '50mb', type: ['application/json', 'text/plain'] }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -68,9 +67,7 @@ app.use('/uploads', express.static(uploadDir, {
   }
 }));
 
-// =========================================================================
-// 🐞 PRO API DEBUGGER: To view logs
-// =========================================================================
+// API Debugger
 app.use((req, res, next) => {
   if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
     console.log(`\n--------------------------------------------------`);
@@ -105,11 +102,9 @@ const cleanId = (id) => {
   return typeof id === 'object' ? (id._id?.toString() || id.id?.toString()) : id.toString().trim();
 };
 
-const activeUsers = new Map(); // userId -> socket.id
+const activeUsers = new Map();
 
-// ==========================================
 // ⚡ SOCKET.IO REAL-TIME COMMUNICATION HUB
-// ==========================================
 io.on('connection', (socket) => {
   const rawUserId = socket.handshake.query.userId;
   const userId = cleanId(rawUserId);
@@ -157,8 +152,6 @@ io.on('connection', (socket) => {
     const callerId = cleanId(data?.from);
     if (!targetUser || !callerId) return;
 
-    console.log(`📞 [Signaling] Call requested: ${callerId} -> ${targetUser} (${data.callType})`);
-    
     let resolvedCallerName = data.name || data.callerName;
     if (!resolvedCallerName || resolvedCallerName === "Unknown User") {
       try {
@@ -181,16 +174,12 @@ io.on('connection', (socket) => {
   socket.on("accept-call", (data) => {
     const callerToAnswer = cleanId(data?.to);
     if (!callerToAnswer) return;
-
-    console.log(`✅ [Signaling] Call accepted, sending SDP Answer to: ${callerToAnswer}`);
     io.to(callerToAnswer).emit("call-accepted", { signal: data.signal });
   });
 
   socket.on("end-call", (data) => {
     const target = cleanId(data?.to);
     if (!target) return;
-
-    console.log(`🚫 [Signaling] Hangup signal sent to: ${target}`);
     io.to(target).emit("call-ended");
   });
 

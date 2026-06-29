@@ -2,10 +2,8 @@ import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library'; 
 
-// Google OAuth Client ഇൻഷിയലൈസ് ചെയ്യുന്നു
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// JWT ടോക്കൺ ജനറേറ്റ് ചെയ്യുന്ന ഫങ്ഷൻ
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { 
     expiresIn: '30d' 
@@ -13,8 +11,6 @@ const generateToken = (id) => {
 };
 
 // @desc    Register new user
-// @route   POST /api/users/register
-// @access  Public
 export const registerUser = async (req, res) => {
   const { name, email, password, role, phone } = req.body;
   
@@ -29,7 +25,8 @@ export const registerUser = async (req, res) => {
       email, 
       password, 
       role: role || 'owner', 
-      phone: phone || ''     
+      phone: phone || '',
+      wishlist: [] // പുതിയ യൂസർക്ക് വിഷ്‌ലിസ്റ്റ് അറേ ഉണ്ടാക്കുന്നു
     });
 
     if (user) {
@@ -38,7 +35,7 @@ export const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        avatar: user.avatar, // 💡 ഇവിടെയും അバター ഉൾപ്പെടുത്തി
+        avatar: user.avatar, 
         token: generateToken(user._id),
       });
     } else {
@@ -51,8 +48,6 @@ export const registerUser = async (req, res) => {
 };
 
 // @desc    Auth user & get token
-// @route   POST /api/users/login
-// @access  Public
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
@@ -65,7 +60,7 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        avatar: user.avatar, // 💡 നോർമൽ ലോഗിൻ ചെയ്യുമ്പോഴും ഫ്രണ്ട്-എൻഡിലേക്ക് അവതാർ അയക്കുന്നു
+        avatar: user.avatar, 
         token: generateToken(user._id),
       });
     } else {
@@ -78,52 +73,110 @@ export const loginUser = async (req, res) => {
 };
 
 // @desc    Auth Google user & get token
-// @route   POST /api/users/google
-// @access  Public
 export const googleLogin = async (req, res) => {
   const { token } = req.body;
 
   try {
-    // 1. ഫ്രണ്ട്-എൻഡിൽ നിന്ന് വന്ന ഗൂഗിൾ ടോക്കൺ വെരിഫൈ ചെയ്യുന്നു
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    const { email, name, picture } = payload; // 💡 ഗൂഗിളിൽ നിന്നുള്ള 'picture' കൂടി ഇവിടെ എടുക്കുന്നു
+    const { email, name, picture } = payload; 
 
-    // 2. ഈ ഇമെയിലുള്ള യൂസർ ഡാറ്റാബേസിൽ നിലവിലുണ്ടോ എന്ന് പരിശോധിക്കുന്നു
     let user = await User.findOne({ email });
 
     if (!user) {
-      // യൂസർ ഇല്ലെങ്കിൽ ഗൂഗിൾ വിവരങ്ങളും പ്രൊഫൈൽ ചിത്രവും വെച്ച് പുതിയൊരു അക്കൗണ്ട് ക്രിയേറ്റ് ചെയ്യുന്നു
       user = await User.create({
         name: name,
         email: email,
         password: Math.random().toString(36).slice(-8), 
         role: 'owner', 
         phone: '',
-        avatar: picture || '' // 💡 പുതിയ യൂസറാണെങ്കിൽ ഗൂഗിൾ പിക്ചർ ഡാറ്റാബേസിൽ സേവ് ചെയ്യുന്നു
+        avatar: picture || '',
+        wishlist: [] 
       });
     } else if (!user.avatar && picture) {
-      // നിലവിലുള്ള യൂസർ ആണെങ്കിലും ഡാറ്റാബേസിൽ ഫോട്ടോ ഇല്ലെങ്കിൽ പുതിയ ഫോട്ടോ അപ്ഡേറ്റ് ചെയ്യും
       user.avatar = picture;
       await user.save();
     }
 
-    // 3. ഫ്രണ്ട്-എൻഡിലേക്ക് അവതാർ ഉൾപ്പെടെയുള്ള വിവരങ്ങൾ തിരികെ അയക്കുന്നു
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
-      avatar: user.avatar || picture, // 💡 ഫ്രണ്ട്-എൻഡിലേക്ക് പ്രൊഫൈൽ ലിങ്ക് അയക്കുന്നു
+      avatar: user.avatar || picture, 
       token: generateToken(user._id),
     });
 
   } catch (error) {
     console.error("Google Login Error:", error);
     res.status(500).json({ message: 'Google login failed', error: error.message });
+  }
+};
+
+// ==========================================
+// 💡 WISHLIST FUNCTIONS 
+// ==========================================
+
+// @desc    Toggle Wishlist (Add or Remove property)
+export const toggleWishlist = async (req, res) => {
+  try {
+    const { propertyId } = req.body;
+    
+    if (!req.user || !req.user._id) {
+       return res.status(401).json({ success: false, message: "Not authorized, user not found in request" });
+    }
+
+    const userId = req.user._id; 
+    const user = await User.findById(userId);
+    
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    if (!user.wishlist) {
+        user.wishlist = [];
+    }
+
+    // 💡 ഐഡികൾ കൃത്യമായി മാച്ച് ചെയ്യാൻ toString() ഉപയോഗിക്കുന്നു
+    const isWishlisted = user.wishlist.some(id => id.toString() === propertyId.toString());
+
+    if (isWishlisted) {
+      // Remove from wishlist
+      user.wishlist = user.wishlist.filter(id => id.toString() !== propertyId.toString());
+    } else {
+      // Add to wishlist
+      user.wishlist.push(propertyId);
+    }
+
+    await user.save();
+    res.status(200).json({ success: true, wishlist: user.wishlist });
+  } catch (error) {
+    console.error("Wishlist Toggle Error:", error);
+    res.status(500).json({ success: false, message: "Server Error", error: error.message });
+  }
+};
+
+// @desc    Get User's Saved Wishlist
+export const getWishlist = async (req, res) => {
+  try {
+    if (!req.user || !req.user._id) {
+        return res.status(401).json({ success: false, message: "Not authorized" });
+    }
+
+    const user = await User.findById(req.user._id).populate('wishlist');
+    
+    if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // വിഷ്‌ലിസ്റ്റിൽ ചിലപ്പോൾ ഡിലീറ്റ് ആയിപ്പോയ പ്രോപ്പർട്ടികൾ (null) ഉണ്ടാകാം, അത് ഫിൽറ്റർ ചെയ്ത് മാറ്റുന്നു
+    const validWishlist = (user.wishlist || []).filter(prop => prop !== null);
+    
+    res.status(200).json({ success: true, wishlist: validWishlist });
+  } catch (error) {
+    console.error("Get Wishlist Error:", error);
+    res.status(500).json({ success: false, message: "Server Error", error: error.message });
   }
 };

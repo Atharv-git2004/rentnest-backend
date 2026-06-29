@@ -25,10 +25,14 @@ const userSchema = new mongoose.Schema({
     required: true, 
     default: 'owner' 
   },
-  avatar: { // 💡 ഗൂഗിൾ പ്രൊഫൈൽ ചിത്രം സൂക്ഷിക്കാൻ പുതിയ ഫീൽഡ് ആഡ് ചെയ്തു
+  avatar: { // 💡 ഗൂഗിൾ പ്രൊഫൈൽ ചിത്രം സൂക്ഷിക്കാൻ
     type: String,
     default: ''
-  }
+  },
+  wishlist: [{ // 💡 വിഷ്‌ലിസ്റ്റ് പ്രോപ്പർട്ടികൾ സേവ് ചെയ്യാൻ ചേർത്ത പുതിയ ഫീൽഡ്
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Property' // Property മോഡലുമായി ബന്ധിപ്പിക്കുന്നു
+  }]
 }, { timestamps: true });
 
 // 💡 Password Hashing Middleware
