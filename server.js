@@ -69,7 +69,7 @@ app.use('/uploads', express.static(uploadDir, {
 }));
 
 // =========================================================================
-// 🐞 PRO API DEBUGGER: ലോഗുകൾ കാണാൻ
+// 🐞 PRO API DEBUGGER: To view logs
 // =========================================================================
 app.use((req, res, next) => {
   if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
